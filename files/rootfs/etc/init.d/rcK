@@ -1,0 +1,10 @@
+#!/bin/sh
+# Выключение: остановить демоны, записать время, отмонтировать всё.
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+killall dropbear udhcpc ntpd syslogd klogd 2>/dev/null
+hwclock -w -u 2>/dev/null
+swapoff -a 2>/dev/null
+sync
+umount -a -r 2>/dev/null
+mount -o remount,ro / 2>/dev/null
+sync

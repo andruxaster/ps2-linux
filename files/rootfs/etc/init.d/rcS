@@ -1,0 +1,50 @@
+#!/bin/sh
+# Загрузка PS2 Linux после switch_root из initramfs.
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+. /etc/rc.conf
+
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mkdir -p /dev/pts /dev/shm
+mount -a
+[ -e /dev/fd ] || ln -s /proc/self/fd /dev/fd
+mkdir -p /run/lock /var/log /var/run /tmp
+chmod 1777 /tmp
+
+hostname "${HOSTNAME:-ps2}"
+
+# модули: индекс и автозагрузка при подключении устройств
+[ -f "/lib/modules/$(uname -r)/modules.dep" ] || depmod
+echo /sbin/mdev > /proc/sys/kernel/hotplug
+mdev -s
+# то, что подключено уже сейчас (USB-Ethernet, клавиатура, …)
+find /sys/devices -name modalias -exec cat {} + 2>/dev/null | sort -u |
+	while read -r a; do modprobe -q "$a" 2>/dev/null; done
+
+syslogd -s 256 -b 1
+klogd
+
+hwclock -s -u 2>/dev/null
+
+# консоль
+if [ -n "$KEYMAP" ] && [ -f "$KEYMAP" ]; then
+	for t in /dev/tty1 /dev/tty2 /dev/tty3; do loadkmap < "$KEYMAP" > "$t" 2>/dev/null; done
+fi
+if [ -n "$FONT" ] && [ -f "$FONT" ]; then
+	for t in /dev/tty1 /dev/tty2 /dev/tty3; do setfont -C "$t" "$FONT" 2>/dev/null; done
+fi
+
+ifconfig lo 127.0.0.1 up
+[ "$NET" != off ] && /etc/init.d/network &
+
+[ "$SSHD" = yes ] && /etc/init.d/sshd
+
+/etc/init.d/zram start
+[ -n "$SWAPFILE" ] && [ -f "$SWAPFILE" ] && swapon -p 10 "$SWAPFILE"
+
+if ! grep -q '^root:[^:!*]' /etc/shadow; then
+	echo
+	echo "  У root нет пароля: на консоли вход как 'root' без пароля,"
+	echo "  но SSH пустой пароль не пустит. Задайте его: passwd"
+	echo
+fi

@@ -1,0 +1,67 @@
+#!/bin/busybox sh
+# initramfs PS2 Linux: поднять IOP и USB, найти rootfs на флешке, switch_root.
+#
+# Раздел с корнем ищется по метке ps2root (findfs), иначе /dev/sda2.
+# Режим видео: первая строка VIDEO.TXT на FAT-разделе флешки, иначе @VIDEO@.
+
+/bin/busybox --install -s
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+echo 0 > /proc/sys/kernel/printk_ratelimit 2>/dev/null
+[ -f "/lib/modules/$(uname -r)/modules.dep" ] || depmod
+
+rescue() {
+	echo "initramfs: $*" >&2
+	modprobe ps2fb mode_option="${VIDEO:-@VIDEO@}" 2>/dev/null
+	echo "Аварийная оболочка initramfs. 'exit' — повторить загрузку." >&2
+	setsid cttyhack sh
+	exec /init
+}
+
+# IOP и USB — по списку /etc/initramfs-modules (ps2fb — ниже, с режимом видео)
+grep -v '^#' /etc/initramfs-modules | while read -r m; do
+	[ -z "$m" ] || [ "$m" = ps2fb ] && continue
+	modprobe "$m" || echo "initramfs: не загрузился модуль $m" >&2
+done
+
+# ждём флешку до 20 секунд
+ROOT=
+i=0
+while [ $i -lt 40 ]; do
+	ROOT=$(findfs LABEL=ps2root 2>/dev/null) || ROOT=
+	[ -z "$ROOT" ] && [ -b /dev/sda2 ] && ROOT=/dev/sda2
+	[ -n "$ROOT" ] && break
+	sleep 0.5
+	i=$((i + 1))
+done
+
+# режим видео с FAT-раздела (удобно править на ПК)
+VIDEO=@VIDEO@
+BOOT=$(findfs LABEL=PS2BOOT 2>/dev/null) || BOOT=/dev/sda1
+mkdir -p /boot
+if [ -b "$BOOT" ] && mount -t vfat -o ro "$BOOT" /boot 2>/dev/null; then
+	if [ -f /boot/VIDEO.TXT ]; then
+		v=$(head -n 1 /boot/VIDEO.TXT | tr -d '\r \t')
+		[ -n "$v" ] && VIDEO=$v
+	fi
+	umount /boot
+fi
+modprobe ps2fb mode_option="$VIDEO"
+
+[ -n "$ROOT" ] || rescue "раздел с корнем не найден (метка ps2root или /dev/sda2)"
+
+# без журнала: после неаккуратного выключения чиним автоматически
+if [ -x /sbin/e2fsck ]; then
+	e2fsck -p "$ROOT"
+	[ $? -ge 4 ] && rescue "e2fsck не смог починить $ROOT — запустите 'e2fsck -f $ROOT'"
+fi
+
+mount -t ext4 -o rw,noatime "$ROOT" /newroot || rescue "не монтируется $ROOT"
+[ -x /newroot/sbin/init ] || rescue "на $ROOT нет /sbin/init"
+
+mount --move /dev /newroot/dev
+umount /sys /proc
+exec switch_root /newroot /sbin/init

@@ -1,0 +1,18 @@
+# Модули, которые /init загружает по порядку (зависимости build-kernel.sh
+# добавит сам). Тот же порядок, что в initramfs frno7.
+sif
+iop-memory
+iop-heap
+iop-module
+iop-irq
+iop-dev9
+iop-registers
+usb-common
+usbcore
+hid
+usbhid
+hid-generic
+usb-storage
+sd_mod
+ohci-ps2
+ps2fb

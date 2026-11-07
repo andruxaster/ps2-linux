@@ -1,0 +1,7 @@
+# результаты и промежуточные файлы сборки
+/work/
+/out/
+/dist/
+*.log
+test/hello
+test/hellocpp
