@@ -145,11 +145,12 @@ atomics and C++ exceptions.
 
 ```sh
 sudo apt install fdisk dosfstools mtools fakeroot kmod python3 \
-     meson ninja-build pkg-config autoconf automake libtool autopoint gettext libltdl-dev
+     meson ninja-build pkg-config autoconf automake libtool autopoint gettext libltdl-dev \
+     cmake dpkg-dev tcl
 ```
 
-Some sources (nano, bash, less, links2, socat, rsync, ncdu, frotz, gdb) are
-fetched with `apt-get source`, so `deb-src` must be enabled: on Debian 12 add a
+Many sources (nano, bash, less, frotz, gdb, screen, lynx, angband, bsdgames,
+gnugo and others) are fetched with `apt-get source` (Debian patches applied), so `deb-src` must be enabled: on Debian 12 add a
 `deb-src` line to `/etc/apt/sources.list`; on Debian 13 and Ubuntu set
 `Types: deb deb-src` in the `.sources` file; then run `sudo apt update`.
 Everything else is downloaded from GitHub (git or release tarballs).
@@ -188,10 +189,20 @@ glib, OpenSSL…), except the static busybox:
 |---|---|
 | Base | busybox (init, mdev, udhcpc, ntpd, vi, wget with HTTPS…), bash, e2fsprogs |
 | Access | dropbear (SSH, scp), OpenSSH sftp-server — WinSCP/FileZilla work |
-| Console | mc, nano, vim, less, htop, tmux, ncdu, tree, file, jq |
-| Network | curl (OpenSSL, CA certificates), links, irssi, rsync, socat, iperf3, tcpdump |
+| Console | mc, nano, vim, less, htop, tmux, screen, ncdu, tree, file, jq, dialog, figlet |
+| Utilities | strace, lsof, sqlite3, zip, unzip |
+| Organizer | calcurse (calendar, to-do), sc-im (spreadsheet) |
+| Network | curl (OpenSSL, CA certificates), links, lynx, irssi, rsync, socat, iperf3, tcpdump, mtr, nload, iftop, tintin++ (MUD client) |
 | Languages, debugging | lua 5.4, micropython, gdbserver |
-| Games | nethack, frotz, cmatrix |
+| Roguelikes | nethack, angband, brogue (`brogue`), umoria (`moria`) |
+| Arcade, puzzles | vitetris, ninvaders, moon-buggy, nsnake, 2048, nudoku, freesweep, ttysolitaire, cmatrix |
+| Strategy, board | gnugo, gnuchess, curseofwar, Text Elite (`txtelite`) |
+| Text adventures | frotz, Zork I–III (`zork1`, `zork2`, `zork3`), adventure |
+| bsdgames | atc, backgammon, battlestar, canfield, cribbage, gomoku, hangman, mille, monop, robots, sail, snake, trek, worm, wump, banner, pom… |
+
+Games live in `/usr/games` (already in `PATH`). Zork saves go to the current directory.
+The `evbug` debug module is removed from the image: it logged every key press
+to `/var/log/messages`.
 
 OpenSSL is used instead of mbedTLS because links and irssi only support TLS
 through OpenSSL.
@@ -251,5 +262,9 @@ On hardware (SCPH-7700x, SCART RGB, `640x512i@50`) it boots to the login prompt.
   which this project builds upon.
 - [meta-playstation2](https://github.com/andreacampanella/meta-playstation2) —
   ideas on graphics, sound and FPU for future work.
+- Zork I–III — Infocom; released by Microsoft under the MIT licence
+  ([historicalsource](https://github.com/historicalsource)).
+- Text Elite — Ian Bell's `txtelite.c` 1.5 (published freely by the author, no formal
+  licence), via [fragglet/txtelite](https://github.com/fragglet/txtelite).
 
 The scripts download third-party sources at build time; each has its own licence.

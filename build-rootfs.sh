@@ -27,7 +27,10 @@ export PKG_CONFIG_LIBDIR=$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig
 export PKG_CONFIG_PATH=
 export CC=$TARGET-gcc CXX=$TARGET-g++ AR=$TARGET-ar RANLIB=$TARGET-ranlib
 export STRIP=$TARGET-strip NM=$TARGET-nm LD=$TARGET-ld OBJDUMP=$TARGET-objdump
-export CFLAGS="-O2 -pipe" CXXFLAGS="-O2 -pipe" LDFLAGS=
+# -fcommon: старый код с глобальными переменными в заголовках (GCC 10+ иначе падает)
+export CFLAGS="-O2 -pipe -fcommon" CXXFLAGS="-O2 -pipe" LDFLAGS=
+# при кросс-сборке autoconf не может проверить malloc(0) и подставляет rpl_malloc
+export ac_cv_func_malloc_0_nonnull=yes ac_cv_func_realloc_0_nonnull=yes
 command -v $CC >/dev/null || { echo "нет $CC — сначала ./build.sh" >&2; exit 1; }
 [ -x "$TOP/work/kernel/busybox" ] || { echo "нет busybox — сначала ./build-kernel.sh" >&2; exit 1; }
 
@@ -61,6 +64,32 @@ fresh() { rm -rf "$BLD/$1"; mkdir -p "$BLD/$1"; cd "$BLD/$1"; }
 insrc() { rm -rf "$BLD/$1"; cp -a "$SRC/$1" "$BLD/$1"; cd "$BLD/$1"; }
 lib_install() { make install DESTDIR="$SYSROOT"; }
 autoreconf_if() { [ -x configure ] || autoreconf -fi >/dev/null 2>&1 || autoreconf -fi; }
+debx_src() { # пакет-источник: исходник Debian/Ubuntu вместе с патчами (dpkg-source -x)
+	local d=$SRC/deb2-$1
+	[ -d "$d" ] && return
+	log "apt-get source $1 (с патчами)"
+	mkdir -p "$SRC/.dl-$1" && (cd "$SRC/.dl-$1" && apt-get source --download-only -qq "$1" >/dev/null 2>&1) || {
+		echo "apt-get source $1 не сработал — включите deb-src в источниках apt" >&2; exit 1; }
+	dpkg-source -q -x "$(ls "$SRC/.dl-$1"/*.dsc | head -1)" "$d" >/dev/null
+}
+debx() { debx_src "$1"; insrc "deb2-$1"; }   # исходник с патчами → каталог сборки
+# autotools-пакет: configure + make + install в rootfs
+# старые config.sub/config.guess не знают ни хост, ни mipsr5900el — заменить свежими
+fresh_config_sub() {
+	local f n
+	for n in config.sub config.guess; do
+		f=$(ls /usr/share/misc/$n /usr/share/automake-*/$n 2>/dev/null | head -1)
+		[ -n "$f" ] && find . -name $n -exec cp "$f" {} \;
+	done
+}
+at_build() {
+	autoreconf_if
+	fresh_config_sub
+	./configure "${HOST[@]}" "$@"
+	make -j"$JOBS"
+	make install DESTDIR="$ROOTFS"
+}
+GAMES=/usr/games
 
 # ---------- библиотеки (в sysroot, shared + static) ----------
 b_zlib() {
@@ -399,6 +428,290 @@ b_cmatrix() {
 	install -Dm755 cmatrix "$ROOTFS/usr/bin/cmatrix"
 }
 
+# ---------- игры ----------
+b_angband() {
+	debx angband
+	[ -x configure ] || ./autogen.sh >/dev/null
+	./configure "${HOST[@]}" --bindir=$GAMES --enable-curses --disable-x11 --disable-sdl \
+		--disable-sdl2 --with-private-dirs
+	make -j"$JOBS"; make install DESTDIR="$ROOTFS"
+}
+b_brogue() {
+	git_src brogue tmewett/BrogueCE v1.15.1; insrc brogue
+	make -j"$JOBS" CC="$CC" TERMINAL=YES GRAPHICS=NO MAC_APP=NO RELEASE=YES \
+		DATADIR=/usr/share/brogue bin/brogue
+	install -Dm755 bin/brogue "$ROOTFS/usr/lib/brogue/brogue"
+	cp -r bin/assets "$ROOTFS/usr/lib/brogue/" 2>/dev/null || true
+	install -Dm755 /dev/stdin "$ROOTFS$GAMES/brogue" <<'EOF'
+#!/bin/sh
+# Brogue CE: terminal mode; saves and highscores go to ~/.brogue
+mkdir -p "$HOME/.brogue" && cd "$HOME/.brogue" && exec /usr/lib/brogue/brogue --term "$@"
+EOF
+}
+b_moria() {
+	debx moria; mkdir -p _b; cd _b
+	cmake .. -DCMAKE_TOOLCHAIN_FILE="$PREFIX/toolchain.cmake" -DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_CXX_FLAGS="-O2 -DUMORIA_DATA_DIR=\\\"/usr/share/games/umoria\\\"" >/dev/null
+	make -j"$JOBS"
+	local o; o=$(find . -maxdepth 2 -type f -name umoria -perm -u+x | head -1)
+	install -Dm755 "$o" "$ROOTFS/usr/lib/umoria/umoria"
+	# таблица рекордов: umoria не создаёт её сама
+	install -Dm666 /dev/null "$ROOTFS/var/games/moria/scores.dat"
+	cp -r "$(dirname "$o")/data" "$ROOTFS/usr/lib/umoria/" 2>/dev/null || cp -r ../data "$ROOTFS/usr/lib/umoria/"
+	install -Dm755 /dev/stdin "$ROOTFS$GAMES/moria" <<'EOF'
+#!/bin/sh
+# umoria looks for data/ next to the current directory; saves go to ~/.umoria
+D=$HOME/.umoria; mkdir -p "$D"; cd "$D"
+[ -e data ] || ln -s /usr/lib/umoria/data data
+exec /usr/lib/umoria/umoria "$@"
+EOF
+}
+b_vitetris() {
+	debx vitetris
+	./configure --prefix=/usr --bindir=$GAMES CC="$CC" --without-x --without-joystick \
+		--without-network --enable-curses=no
+	make -j"$JOBS" CC="$CC" LDFLAGS=
+	install -Dm755 vitetris "$ROOTFS$GAMES/vitetris"
+	ln -sf vitetris "$ROOTFS$GAMES/tetris"
+}
+b_ninvaders() {
+	debx ninvaders
+	make -j"$JOBS" CC="$CC" CFLAGS="$CFLAGS" LIBS=-lncursesw LDFLAGS=-lncursesw
+	install -Dm755 nInvaders "$ROOTFS$GAMES/ninvaders"
+}
+b_moonbuggy() {
+	debx moon-buggy
+	autoreconf_if; fresh_config_sub
+	./configure "${HOST[@]}" --bindir=$GAMES --localstatedir=/var/games
+	make -j"$JOBS"
+	# make install запускает сам moon-buggy (-c), чтобы создать таблицу рекордов,
+	# — при кросс-сборке нельзя; без неё рекорды пишутся в ~/.mbscore
+	install -Dm755 moon-buggy "$ROOTFS$GAMES/moon-buggy"
+}
+b_nsnake() {
+	debx nsnake
+	make -j"$JOBS" CXX="$CXX" CC="$CC" LDFLAGS="-lncursesw" CFLAGS_PLATFORM= \
+		CXXFLAGS="$CXXFLAGS -Ideps"
+	install -Dm755 bin/nsnake "$ROOTFS$GAMES/nsnake"
+}
+b_2048() {
+	git_src 2048 mevdschee/2048.c main; insrc 2048
+	$CC $CFLAGS -std=c99 2048.c -o 2048
+	install -Dm755 2048 "$ROOTFS$GAMES/2048"
+}
+b_nudoku() {
+	debx nudoku
+	at_build --bindir=$GAMES --disable-cairo
+}
+b_freesweep() {
+	debx freesweep
+	at_build --bindir=$GAMES
+}
+b_ttysolitaire() {
+	debx tty-solitaire
+	make -j"$JOBS" CC="$CC" CFLAGS="$CFLAGS -std=c99 -fcommon -D_XOPEN_SOURCE_EXTENDED" LDFLAGS=-lncursesw
+	install -Dm755 ttysolitaire "$ROOTFS$GAMES/ttysolitaire"
+}
+b_gnugo() {
+	debx_src gnugo
+	# patterns/ генерирует базы паттернов своими программами (mkpat, joseki…) —
+	# их собираем и запускаем на хосте, а игру — кросс-компилятором
+	rm -rf "$BLD/gnugo-host"; cp -a "$SRC/deb2-gnugo" "$BLD/gnugo-host"; cd "$BLD/gnugo-host"
+	fresh_config_sub
+	env -u CC -u CXX -u AR -u RANLIB -u STRIP -u NM -u LD -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+		sh -c './configure --without-readline >/dev/null && make -j'"$JOBS"' >/dev/null'
+	insrc deb2-gnugo
+	fresh_config_sub
+	./configure "${HOST[@]}" --bindir=$GAMES --without-readline --disable-color
+	# файлы, которые сгенерировали хостовые mkpat, joseki и др.
+	cp "$BLD/gnugo-host"/patterns/*.{c,h,db} patterns/ 2>/dev/null || true
+	sleep 1; touch patterns/*.db; sleep 1; touch patterns/*.c patterns/*.h
+	# сгенерированные .c и .db больше не зависят от генераторов — make их не запускает
+	sed -i -E '/^[^#[:space:]][^:=]*:/ s/ (mkpat|joseki|mkeyes|uncompress_fuseki|mkmcpat)\$\(EXEEXT\)//g' patterns/Makefile
+	make -j"$JOBS"
+	make install DESTDIR="$ROOTFS"
+}
+b_gnuchess() {
+	debx gnuchess
+	at_build --bindir=$GAMES --without-readline
+}
+b_curseofwar() {
+	debx curseofwar
+	make -j"$JOBS" CC="$CC" CFLAGS="$CFLAGS" LDFLAGS="-lncursesw -lm" curseofwar
+	install -Dm755 curseofwar "$ROOTFS$GAMES/curseofwar"
+}
+b_bsdgames() {
+	debx bsdgames
+	# configure спрашивает вопросы — ответы заранее в config.params
+	cat > config.params <<EOF
+bsd_games_cfg_non_interactive=y
+bsd_games_cfg_install_prefix=$ROOTFS
+bsd_games_cfg_gamesdir=$GAMES
+bsd_games_cfg_sbindir=/usr/sbin
+bsd_games_cfg_usrbindir=/usr/bin
+bsd_games_cfg_libexecdir=/usr/lib/games
+bsd_games_cfg_man6dir=/usr/share/man/man6
+bsd_games_cfg_man8dir=/usr/share/man/man8
+bsd_games_cfg_man5dir=/usr/share/man/man5
+bsd_games_cfg_sharedir=/usr/share/games/bsdgames
+bsd_games_cfg_varlibdir=/var/games/bsdgames
+bsd_games_cfg_do_chown=n
+bsd_games_cfg_use_dot_so=symlinks
+bsd_games_cfg_gzip_manpages=n
+bsd_games_cfg_cc=$CC
+bsd_games_cfg_cxx=$CXX
+bsd_games_cfg_optimize_flags="$CFLAGS"
+bsd_games_cfg_other_cflags="-D_GNU_SOURCE -DBSD_GAMES_USE_TERMIOS -include sys/types.h -include fcntl.h"
+bsd_games_cfg_ncurses_lib=-lncursesw
+bsd_games_cfg_ncurses_includes=
+bsd_games_cfg_openssl_lib=
+bsd_games_cfg_openssl_includes=
+bsd_games_cfg_no_build_dirs="boggle dm factor fortune hack hunt phantasia primes"
+bsd_games_cfg_dictionary_src=/dev/null
+bsd_games_cfg_pager=/usr/bin/less
+bsd_games_cfg_use_libcrypto=n
+EOF
+	./configure >/dev/null
+	# в musl нет <sys/cdefs.h> из glibc — заменить #include_next нужными макросами
+	sed -i 's|^#include_next <sys/cdefs.h>|#ifdef __GLIBC__\n#include_next <sys/cdefs.h>\n#else\n#define __BEGIN_DECLS\n#define __END_DECLS\n#define __P(x) x\n#define __unused __attribute__((__unused__))\n#endif|' include/sys/cdefs.h
+	# atc линкуется с -lfl ради одной функции yywrap
+	if [ ! -f "$SYSROOT/usr/lib/libfl.a" ]; then
+		echo 'int yywrap(void) { return 1; }' > "$BLD/yywrap.c"
+		$CC $CFLAGS -c "$BLD/yywrap.c" -o "$BLD/yywrap.o"
+		$AR rcs "$SYSROOT/usr/lib/libfl.a" "$BLD/yywrap.o"
+	fi
+	# adventure шифрует данные через random(); у glibc (хост) и musl (цель) разные
+	# последовательности → свой одинаковый ГПСЧ в setup.c и io.c
+	cat >> adventure/hdr.h <<'EOF'
+static unsigned int adv_seed __attribute__((unused));
+static void __attribute__((unused)) adv_srandom(unsigned int s) { adv_seed = s; }
+static unsigned int __attribute__((unused)) adv_random(void)
+{ adv_seed = adv_seed * 1103515245u + 12345u; return adv_seed >> 16; }
+EOF
+	sed -i 's/\bsrandom(SEED)/adv_srandom(SEED)/; s/\brandom()/adv_random()/g' adventure/setup.c adventure/io.c
+	# adventure и monop генерируют данные своими программами — собрать их для хоста
+	gcc -O2 -I. -Iinclude adventure/setup.c -o adventure/setup
+	gcc -O2 -I. -Iinclude monop/initdeck.c -o monop/initdeck
+	local o="-o adventure/setup -o monop/initdeck"
+	make -j"$JOBS" $o
+	make install INSTALL_PREFIX="$ROOTFS" $o
+	ls "$ROOTFS$GAMES/robots" >/dev/null   # игры действительно установились
+}
+b_txtelite() {
+	git_src txtelite fragglet/txtelite master; insrc txtelite
+	$CC $CFLAGS txtelite.c -o txtelite -lm
+	install -Dm755 txtelite "$ROOTFS$GAMES/txtelite"
+	install -Dm644 docs/comments.txt "$ROOTFS/usr/share/doc/txtelite/comments.txt"
+}
+b_tintin() {
+	debx tintin++; cd src
+	ac_cv_file__dev_ptmx=yes ac_cv_file__dev_ptc=no \
+	./configure "${HOST[@]}" --bindir=/usr/bin
+	make -j"$JOBS"
+	install -Dm755 tt++ "$ROOTFS/usr/bin/tt++"
+}
+b_zork() {
+	# Zork I–III: Microsoft выложила под MIT (2025), вместе с .z3 для Z-machine
+	local z
+	for z in zork1 zork2 zork3; do
+		git_src "$z" "historicalsource/$z" master
+		install -Dm644 "$SRC/$z/COMPILED/$z.z3" "$ROOTFS/usr/share/games/zork/$z.z3"
+		install -Dm644 "$SRC/$z/LICENSE" "$ROOTFS/usr/share/doc/zork/LICENSE.$z"
+		install -Dm755 /dev/stdin "$ROOTFS$GAMES/$z" <<EOF
+#!/bin/sh
+# Zork via frotz; saves go to the current directory
+exec $GAMES/frotz "\$@" /usr/share/games/zork/$z.z3
+EOF
+	done
+}
+
+# ---------- утилиты, сеть, органайзер ----------
+b_strace() {
+	debx strace
+	at_build --enable-mpers=no --disable-gcc-Werror --without-libdw --without-libunwind
+}
+b_lsof() {
+	debx lsof
+	LINUX_HASSELINUX=N LSOF_CC="$CC" LSOF_AR="$AR cr" LSOF_RANLIB="$RANLIB" LSOF_HOST=none \
+	LSOF_VSTR=5.4 LSOF_MAKE=make ./Configure -n linux
+	make -j"$JOBS" CC="$CC"
+	install -Dm755 lsof "$ROOTFS/usr/bin/lsof"
+}
+b_screen() {
+	debx screen
+	[ -x configure ] || ./autogen.sh >/dev/null
+	./configure "${HOST[@]}" --enable-colors256 --with-socket-dir=/run/screen \
+		--with-pty-mode=0620 --with-pty-group=5 --disable-pam
+	make -j"$JOBS"
+	install -Dm755 screen "$ROOTFS/usr/bin/screen"
+	install -Dm644 etc/etcscreenrc "$ROOTFS/etc/screenrc"
+	mkdir -p "$ROOTFS/usr/share/screen"
+}
+b_dialog() {
+	debx dialog
+	at_build --with-ncursesw --disable-rpath-hack
+}
+b_sqlite() {
+	debx sqlite3
+	# lemon и mksourceid работают на хосте; патч Debian включает это через CROSS_BUILDING
+	autoreconf_if; fresh_config_sub
+	BUILD_CC=gcc BUILD_CFLAGS=-O2 ./configure "${HOST[@]}" --disable-tcl --disable-readline \
+		--enable-editline=no --disable-static
+	make -j"$JOBS" CROSS_BUILDING=yes
+	make install DESTDIR="$ROOTFS" CROSS_BUILDING=yes
+}
+b_zip() {
+	debx zip
+	# configure zip не может проверить размеры типов при кросс-сборке — задать явно
+	make -f unix/Makefile -j"$JOBS" generic CC="$CC" CPP="$CC -E" \
+		LOCAL_ZIP="$CFLAGS -DLARGE_FILE_SUPPORT -DZIP64_SUPPORT -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE"
+	install -Dm755 zip "$ROOTFS/usr/bin/zip"
+}
+b_unzip() {
+	debx unzip
+	make -f unix/Makefile -j"$JOBS" generic CC="$CC" CF="$CFLAGS -I. -DUNIX -DLARGE_FILE_SUPPORT -DUNICODE_SUPPORT -DUTF8_MAYBE_NATIVE -DNO_LCHMOD" LF2=
+	install -Dm755 unzip "$ROOTFS/usr/bin/unzip"
+}
+b_lynx() {
+	debx lynx
+	at_build --with-ssl --with-screen=ncursesw --enable-default-colors --disable-nls \
+		--with-zlib --without-bzlib --without-brotli --enable-ipv6
+}
+b_mtr() {
+	debx mtr
+	[ -x configure ] || ./bootstrap.sh >/dev/null 2>&1 || autoreconf -fi
+	./configure "${HOST[@]}" --without-gtk --without-jansson --without-libcap
+	make -j"$JOBS"; make install DESTDIR="$ROOTFS"
+}
+b_nload() {
+	debx nload
+	at_build
+}
+b_iftop() {
+	debx iftop
+	at_build --with-resolver=netdb
+}
+b_calcurse() {
+	debx calcurse
+	at_build --disable-docs --without-asciidoc
+}
+b_scim() {
+	debx sc-im; cd src
+	sed -i -e 's/^CFLAGS += -DXLSX$//' -e 's/^LDLIBS += -lxlsxwriter$//' Makefile
+	make -j"$JOBS" CC="$CC" prefix=/usr NO_XLSX=1 NO_ODS=1 NO_LUA=1 \
+		LDLIBS="-lncursesw -lm" CFLAGS_EXTRA= name=sc-im
+	install -Dm755 sc-im "$ROOTFS/usr/bin/sc-im"
+	install -Dm644 doc "$ROOTFS/usr/share/sc-im/sc-im_help" 2>/dev/null || true
+}
+b_figlet() {
+	debx figlet
+	# __BEGIN_DECLS/__END_DECLS есть только в glibc <sys/cdefs.h>
+	make -j"$JOBS" CC="$CC" LD="$CC" CFLAGS="$CFLAGS -D__BEGIN_DECLS= -D__END_DECLS=" prefix=/usr \
+		DEFAULTFONTDIR=/usr/share/figlet figlet chkfont figlist showfigfonts
+	install -Dm755 figlet "$ROOTFS/usr/bin/figlet"
+	mkdir -p "$ROOTFS/usr/share/figlet"; cp fonts/*.flf fonts/*.flc "$ROOTFS/usr/share/figlet/"
+}
+
 meson_cross() {
 	cat <<EOF
 [binaries]
@@ -423,7 +736,10 @@ EOF
 LIBS="zlib ncurses libffi pcre2 glib openssl libevent libpcap"
 PROGS="dropbear sftpserver e2fsprogs mc nano vim less htop tmux ncdu tree file jq bash
        rsync socat iperf3 tcpdump links irssi curl lua micropython gdbserver nethack
-       frotz cmatrix"
+       frotz cmatrix
+       strace lsof screen dialog sqlite zip unzip lynx mtr nload iftop calcurse scim figlet
+       angband brogue moria vitetris ninvaders moonbuggy nsnake 2048 nudoku freesweep
+       ttysolitaire gnugo gnuchess curseofwar bsdgames txtelite tintin zork"
 
 run() {
 	local p=$1
@@ -438,6 +754,7 @@ run() {
 
 if [ $# -gt 0 ]; then LIST="$*"; else LIST="$LIBS $PROGS"; fi
 for p in $LIST; do run "$p"; done
+[ -n "${SKIP_ROOT:-}" ] && exit 0   # только пакеты, без сборки корня
 
 # ---------- сборка корня ----------
 if [ ! -f "$OUT/kernel-release" ]; then
@@ -472,6 +789,9 @@ ln -sf /usr/lib/libc.so lib/ld-musl-mipsel-sf.so.1
 
 # модули ядра и индексы
 rm -rf lib/modules && cp -a "$OUT/modules/lib/modules" lib/
+# evbug — отладочный драйвер, пишет в лог каждое событие ввода и подходит к любой
+# клавиатуре; modprobe из busybox не умеет чёрный список, поэтому модуль удаляется
+find lib/modules -name evbug.ko -delete
 depmod -b "$ROOTFS" "$KVER"
 
 # настройки из files/rootfs

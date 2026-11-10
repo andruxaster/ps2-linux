@@ -141,11 +141,12 @@ mipsr5900el-unknown-linux-musl-gcc -static -O2 test/hello.c -o hello
 
 ```sh
 sudo apt install fdisk dosfstools mtools fakeroot kmod python3 \
-     meson ninja-build pkg-config autoconf automake libtool autopoint gettext libltdl-dev
+     meson ninja-build pkg-config autoconf automake libtool autopoint gettext libltdl-dev \
+     cmake dpkg-dev tcl
 ```
 
-Часть исходников (nano, bash, less, links2, socat, rsync, ncdu, frotz, gdb)
-берётся через `apt-get source`. Для этого в источниках apt должен быть включён
+Многие исходники (nano, bash, less, frotz, gdb, screen, lynx, angband, bsdgames,
+gnugo и другие) берутся через `apt-get source` (с патчами Debian). Для этого в источниках apt должен быть включён
 `deb-src`: на Debian 12 добавь `deb-src` в `/etc/apt/sources.list`, на
 Debian 13 и Ubuntu — `Types: deb deb-src` в `.sources`, затем `sudo apt update`.
 Остальное скачивается с GitHub (git или архивы релизов).
@@ -183,10 +184,20 @@ Debian 13 и Ubuntu — `Types: deb deb-src` в `.sources`, затем `sudo apt
 |---|---|
 | Основа | busybox (init, mdev, udhcpc, ntpd, vi, wget с HTTPS…), bash, e2fsprogs |
 | Доступ | dropbear (SSH, scp), sftp-server из OpenSSH — работают WinSCP/FileZilla |
-| Консоль | mc, nano, vim, less, htop, tmux, ncdu, tree, file, jq |
-| Сеть | curl (OpenSSL, CA-сертификаты), links, irssi, rsync, socat, iperf3, tcpdump |
+| Консоль | mc, nano, vim, less, htop, tmux, screen, ncdu, tree, file, jq, dialog, figlet |
+| Утилиты | strace, lsof, sqlite3, zip, unzip |
+| Органайзер | calcurse (календарь, задачи), sc-im (таблицы) |
+| Сеть | curl (OpenSSL, CA-сертификаты), links, lynx, irssi, rsync, socat, iperf3, tcpdump, mtr, nload, iftop, tintin++ (MUD-клиент) |
 | Языки, отладка | lua 5.4, micropython, gdbserver |
-| Игры | nethack, frotz, cmatrix |
+| Roguelike | nethack, angband, brogue (`brogue`), umoria (`moria`) |
+| Аркады, головоломки | vitetris, ninvaders, moon-buggy, nsnake, 2048, nudoku, freesweep, ttysolitaire, cmatrix |
+| Стратегии, настольные | gnugo, gnuchess, curseofwar, Text Elite (`txtelite`) |
+| Текстовые квесты | frotz, Zork I–III (`zork1`, `zork2`, `zork3`), adventure |
+| bsdgames | atc, backgammon, battlestar, canfield, cribbage, gomoku, hangman, mille, monop, robots, sail, snake, trek, worm, wump, banner, pom… |
+
+Игры лежат в `/usr/games` (он уже в `PATH`). Сохранения Zork пишутся в текущий каталог.
+Отладочный модуль `evbug` из образа удалён: он писал каждое нажатие клавиши
+в `/var/log/messages`.
 
 OpenSSL взят вместо mbedTLS: links и irssi умеют TLS только через него.
 
@@ -244,6 +255,10 @@ FreeMcBoot Configurator (пункт меню OSDSYS или кнопка E1 launc
   на который опирается этот проект.
 - [meta-playstation2](https://github.com/andreacampanella/meta-playstation2) —
   идеи по графике, звуку и FPU для следующих шагов.
+- Zork I–III — Infocom; Microsoft открыла их под лицензией MIT
+  ([historicalsource](https://github.com/historicalsource)).
+- Text Elite — `txtelite.c` 1.5 Иэна Белла (автор опубликовал свободно, без
+  формальной лицензии), через [fragglet/txtelite](https://github.com/fragglet/txtelite).
 
 Скрипты скачивают исходники сторонних проектов при сборке; у каждого своя
 лицензия.
