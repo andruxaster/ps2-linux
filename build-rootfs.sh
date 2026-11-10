@@ -448,7 +448,7 @@ log "Корень: busybox, библиотеки, модули, настройк
 KVER=$(cat "$OUT/kernel-release")
 cd "$ROOTFS"
 mkdir -p bin sbin lib usr/bin usr/sbin usr/lib dev proc sys tmp run root var/log var/empty \
-	etc/ssl/certs etc/dropbear mnt media/usb home usr/share/keymaps usr/share/consolefonts
+	etc/ssl/certs etc/dropbear mnt media/usb home
 chmod 700 root; chmod 1777 tmp
 
 install -m755 "$TOP/work/kernel/busybox" bin/busybox
@@ -506,8 +506,9 @@ PRETTY_NAME="PS2 Linux (frno7 kernel, musl, busybox)"
 EOF
 cat > etc/motd <<'EOF'
 
-  PlayStation 2 Linux — mc, nano, vim, htop, tmux, links, irssi, curl, rsync…
-  Настройки: /etc/rc.conf. Раскладка: Alt+Shift. Игры: nethack, frotz, cmatrix.
+  PlayStation 2 Linux - mc, nano, vim, htop, tmux, links, irssi, curl, rsync...
+  Settings: /etc/rc.conf. zram status: /etc/init.d/zram status.
+  Games: nethack, frotz, cmatrix.
 
 EOF
 cp /etc/ssl/certs/ca-certificates.crt etc/ssl/certs/ca-certificates.crt
@@ -522,11 +523,6 @@ for t in linux vt100 vt102 vt220 xterm xterm-256color xterm-color screen screen-
 		[ -f "$f" ] && { install -Dm644 "$f" "usr/share/terminfo/${t:0:1}/$t"; break; }
 	done
 done
-
-# раскладка us,ru (Alt+Shift) и шрифт консоли с кириллицей
-LANG=C.UTF-8 ckbcomp -layout us,ru -option grp:alt_shift_toggle > "$WORK/ru.kmap"
-loadkeys -u --mktable "$WORK/ru.kmap" | python3 "$TOP/tools/mkbkeymap.py" > usr/share/keymaps/ru.bmap
-gzip -dc /usr/share/consolefonts/CyrSlav-Fixed16.psf.gz > usr/share/consolefonts/CyrSlav-Fixed16.psf
 
 # лишнее для консоли без компилятора
 rm -rf usr/include usr/share/{man,info,doc,gtk-doc,aclocal,bash-completion} usr/lib/pkgconfig

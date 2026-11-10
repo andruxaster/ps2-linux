@@ -11,9 +11,10 @@ Build scripts for running modern Linux on the PlayStation 2 with the
 - A small console system (busybox, SSH, mc, vim, curl, tmux, games…) and a
   ready-to-flash USB image.
 
-**Tested on real hardware? Not yet.** Everything is built and checked in an
-R5900 QEMU (see section 4); kernel boot, USB and video on a console still need
-testing. Target console: slim SCPH-7700x, component video output.
+**Tested on real hardware?** Partly: on a slim SCPH-7700x over SCART RGB the
+kernel boots from USB, zram swap starts and the login prompt appears.
+Networking, SSH and most programs are so far only checked in an R5900 QEMU
+(see section 4). Target console: slim SCPH-7700x.
 Hardware reports are very welcome — please open an issue.
 
 Full sequence:
@@ -37,7 +38,6 @@ Repository layout:
 | `files/initramfs-init`, `files/initramfs-modules` | initramfs `/init` and its module list |
 | `files/rootfs/etc/` | inittab, rcS, rc.conf, network, sshd, zram, mdev… |
 | `patches/` | musl patch for the R5900 (by Fredrik Noring) |
-| `tools/mkbkeymap.py` | us/ru keymap in busybox `loadkmap` binary format |
 | `test/` | C and C++ test programs |
 
 How the toolchain differs from a generic MIPS one:
@@ -144,7 +144,7 @@ atomics and C++ exceptions.
 ### Host requirements
 
 ```sh
-sudo apt install fdisk dosfstools mtools fakeroot kmod kbd console-setup python3 \
+sudo apt install fdisk dosfstools mtools fakeroot kmod python3 \
      meson ninja-build pkg-config autoconf automake libtool autopoint gettext libltdl-dev
 ```
 
@@ -169,9 +169,15 @@ Everything else is downloaded from GitHub (git or release tarballs).
   mounts the ext4 partition labelled `ps2root`, and runs `switch_root`.
   If anything fails, a rescue shell opens on screen with the reason.
 - The video mode is read from `VIDEO.TXT` on the FAT partition, editable on a PC.
-  Default `1280x720p@60`: with a component cable the GS outputs HD modes as YPbPr.
-  Other options: `1280x720p@50`, `1920x1080i@60/50`, `720x480p@60`,
-  `720x576p@50`; for composite or SCART use `640x448i@60` or `640x512i@50`.
+  The GS outputs **SD modes as RGB** and **HD modes as YPbPr**, so the mode
+  must match the cable:
+
+  | Cable | Modes |
+  |---|---|
+  | SCART RGB, composite, S-video | `640x512i@50` (default, PAL with borders), `720x576i@50`, `720x288p@50`, `640x448i@60`, `720x480i@60` |
+  | Component (YPbPr) | `1280x720p@60`, `1280x720p@50`, `1920x1080i@60/50`, `720x480p@60`, `720x576p@50` |
+
+  An HD mode on a SCART RGB input gives a green, doubled picture.
 
 ### System (`build-rootfs.sh`)
 
@@ -216,8 +222,8 @@ before mounting, so an unclean shutdown is repaired automatically.
 2. Log in as `root` with no password. Set one right away with `passwd`,
    otherwise SSH won't let you in.
 3. Settings live in `/etc/rc.conf`: network (`NET=dhcp|static|off`, `IFACE`),
-   NTP, SSH, keymap and font, zram. The us/ru layout toggles with Alt+Shift;
-   the console font is CyrSlav-Fixed16.
+   NTP, SSH, zram, and an optional console keymap/font (`KEYMAP`, `FONT`;
+   empty by default = US keyboard and the kernel's built-in font).
 4. zram swap is enabled at boot (`ZRAM=yes`, `ZRAM_SIZE=16M`, `ZRAM_ALGO=lz4`,
    `SWAPPINESS=100`). See how much it saves with `/etc/init.d/zram status`.
    A swap file on the stick, if `SWAPFILE` is set, gets a lower priority.
@@ -227,15 +233,14 @@ before mounting, so an unclean shutdown is repaired automatically.
 6. From a PC: `ssh root@ps2`, `scp`, sftp. Debugging: `gdbserver :1234 ./prog`
    on the PS2 and `gdb-multiarch` on the PC.
 
-No picture? Your TV probably doesn't accept 720p over component — put
-`720x480p@60` in `VIDEO.TXT`. Add a one-button launch via FreeMcBoot
+No picture or a green, doubled one? The mode doesn't match the cable — see the
+table in the kernel section and edit `VIDEO.TXT`. Add a one-button launch via FreeMcBoot
 Configurator (an OSDSYS menu item or an E1 launch key pointing to
 `mass:/VMLINUZ.ELF`).
 
 Checked in the R5900 QEMU: all programs start, all libraries are present, boot
 scripts pass a syntax check, and the initramfs `e2fsck` accepts the partition.
-**The image has not been booted on a console yet**: kernel boot, USB and the
-`setfont` font on `ps2fb` can only be verified on hardware.
+On hardware (SCPH-7700x, SCART RGB, `640x512i@50`) it boots to the login prompt.
 
 ## Credits
 

@@ -1,10 +1,10 @@
 #!/bin/sh
-# Сеть через USB-Ethernet (интерфейс появляется не сразу после загрузки модуля).
+# Networking over USB Ethernet (the interface appears a while after the module loads).
 . /etc/rc.conf
 i=0
 while [ ! -d "/sys/class/net/$IFACE" ] && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done
 if [ ! -d "/sys/class/net/$IFACE" ]; then
-	logger -t network "$IFACE не появился — сетевой адаптер не подключён?"
+	logger -t network "$IFACE did not appear - is the network adapter plugged in?"
 	exit 0
 fi
 

@@ -13,7 +13,7 @@ OUT=${OUT:-$TOP/out}
 IMG=${IMG:-$OUT/ps2-usb.img}
 SIZE=${SIZE:-2G}
 BOOT_MB=${BOOT_MB:-64}
-VIDEO=${VIDEO:-1280x720p@60}
+VIDEO=${VIDEO:-640x512i@50}
 ROOTFS=$OUT/rootfs
 
 for t in sfdisk mkfs.vfat mcopy mke2fs fakeroot; do
@@ -34,10 +34,12 @@ echo "==> FAT32 ($BOOT_MB МиБ)"
 mkfs.vfat -F 32 -n PS2BOOT -C "$TMP/boot.img" $((p1_size / 1024)) >/dev/null
 printf '%s\r\n' "$VIDEO" > "$TMP/VIDEO.TXT"
 cat > "$TMP/README.TXT" <<EOF
-PS2 Linux. Запуск: uLaunchELF -> mass:/VMLINUZ.ELF
-VIDEO.TXT — режим видео (первая строка). Компонентный кабель:
+PS2 Linux. Boot: FreeMcBoot -> wLaunchELF -> mass:/VMLINUZ.ELF
+VIDEO.TXT - video mode (first line).
+SCART RGB / composite / S-video (SD modes output RGB):
+  640x512i@50 (PAL, default), 720x576i@50, 720x288p@50, 640x448i@60 (NTSC), 720x480i@60
+Component cable (HD modes output YPbPr):
   1280x720p@60, 1280x720p@50, 1920x1080i@60, 1920x1080i@50, 720x480p@60, 720x576p@50
-Через композит/SCART: 640x448i@60 (NTSC) или 640x512i@50 (PAL).
 EOF
 sed -i 's/$/\r/' "$TMP/README.TXT"
 mcopy -i "$TMP/boot.img" "$OUT/VMLINUZ.ELF" "$TMP/VIDEO.TXT" "$TMP/README.TXT" ::/

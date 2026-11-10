@@ -1,4 +1,4 @@
-# корень смонтирован из initramfs (ext4 без журнала, noatime)
+# root is mounted by the initramfs (journal-less ext4, noatime)
 devpts	/dev/pts	devpts	gid=5,mode=620	0 0
 tmpfs	/dev/shm	tmpfs	mode=1777	0 0
 tmpfs	/tmp		tmpfs	mode=1777,size=8m	0 0

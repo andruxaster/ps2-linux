@@ -1,4 +1,4 @@
 #!/bin/sh
-# dropbear: ключи хоста создаются при первом входящем подключении (-R).
+# dropbear: host keys are generated on the first incoming connection (-R).
 mkdir -p /etc/dropbear
 exec dropbear -R

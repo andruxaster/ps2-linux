@@ -1,5 +1,5 @@
-# Модули, которые /init загружает по порядку (зависимости build-kernel.sh
-# добавит сам). Тот же порядок, что в initramfs frno7.
+# Modules /init loads in this order (build-kernel.sh adds their dependencies).
+# Same order as frno7's initramfs.
 sif
 iop-memory
 iop-heap

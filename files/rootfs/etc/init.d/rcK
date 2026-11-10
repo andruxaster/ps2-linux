@@ -1,5 +1,5 @@
 #!/bin/sh
-# Выключение: остановить демоны, записать время, отмонтировать всё.
+# Shutdown: stop daemons, save the clock, unmount everything.
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 killall dropbear udhcpc ntpd syslogd klogd 2>/dev/null
 hwclock -w -u 2>/dev/null

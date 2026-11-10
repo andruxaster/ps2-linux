@@ -1,5 +1,5 @@
 #!/bin/sh
-# Загрузка PS2 Linux после switch_root из initramfs.
+# PS2 Linux boot, after switch_root from the initramfs.
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 . /etc/rc.conf
 
@@ -13,11 +13,11 @@ chmod 1777 /tmp
 
 hostname "${HOSTNAME:-ps2}"
 
-# модули: индекс и автозагрузка при подключении устройств
+# modules: index and autoloading on hotplug
 [ -f "/lib/modules/$(uname -r)/modules.dep" ] || depmod
 echo /sbin/mdev > /proc/sys/kernel/hotplug
 mdev -s
-# то, что подключено уже сейчас (USB-Ethernet, клавиатура, …)
+# devices that are already plugged in (USB Ethernet, keyboard, ...)
 find /sys/devices -name modalias -exec cat {} + 2>/dev/null | sort -u |
 	while read -r a; do modprobe -q "$a" 2>/dev/null; done
 
@@ -26,7 +26,7 @@ klogd
 
 hwclock -s -u 2>/dev/null
 
-# консоль
+# console: optional keymap (busybox loadkmap binary format) and font (PSF)
 if [ -n "$KEYMAP" ] && [ -f "$KEYMAP" ]; then
 	for t in /dev/tty1 /dev/tty2 /dev/tty3; do loadkmap < "$KEYMAP" > "$t" 2>/dev/null; done
 fi
@@ -44,7 +44,7 @@ ifconfig lo 127.0.0.1 up
 
 if ! grep -q '^root:[^:!*]' /etc/shadow; then
 	echo
-	echo "  У root нет пароля: на консоли вход как 'root' без пароля,"
-	echo "  но SSH пустой пароль не пустит. Задайте его: passwd"
+	echo "  root has no password: log in on the console as 'root' with no password,"
+	echo "  but SSH will refuse an empty password. Set one with: passwd"
 	echo
 fi

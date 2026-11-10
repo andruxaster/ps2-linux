@@ -1,5 +1,5 @@
 #!/bin/sh
-# zram-swap: сжатый swap в оперативной памяти.  /etc/init.d/zram start|stop|status
+# zram swap: compressed swap in RAM.  /etc/init.d/zram start|stop|status
 . /etc/rc.conf
 Z=/sys/block/zram0
 
@@ -8,13 +8,13 @@ start)
 	[ "$ZRAM" = yes ] || exit 0
 	grep -q '^/dev/zram0 ' /proc/swaps && exit 0
 	if ! modprobe zram num_devices=1 2>/dev/null; then
-		echo "zram: модуля нет (ядро собрано с PROFILE=stock?)" >&2
+		echo "zram: module not available (kernel built with PROFILE=stock?)" >&2
 		exit 0
 	fi
 	modprobe -q "${ZRAM_ALGO:-lz4}" 2>/dev/null
-	# алгоритм задаётся до размера; если lz4 недоступен — остаётся lzo-rle
+	# the algorithm must be set before the size; without lz4, lzo-rle stays
 	echo "${ZRAM_ALGO:-lz4}" > $Z/comp_algorithm 2>/dev/null ||
-		echo "zram: алгоритм ${ZRAM_ALGO:-lz4} недоступен, используется $(sed 's/.*\[\(.*\)\].*/\1/' $Z/comp_algorithm)" >&2
+		echo "zram: algorithm ${ZRAM_ALGO:-lz4} unavailable, using $(sed 's/.*\[\(.*\)\].*/\1/' $Z/comp_algorithm)" >&2
 	echo "${ZRAM_SIZE:-16M}" > $Z/disksize
 	mkswap /dev/zram0 >/dev/null
 	swapon -p 100 /dev/zram0
@@ -27,10 +27,10 @@ stop)
 status)
 	cat /proc/swaps
 	if [ -r $Z/mm_stat ]; then
-		# mm_stat: исходный объём, сжатый, занято памяти (байты)
+		# mm_stat: original size, compressed size, memory used (bytes)
 		set -- $(cat $Z/mm_stat)
-		echo "zram: данных $(($1 / 1024)) КБ → сжато $(($2 / 1024)) КБ, памяти $(($3 / 1024)) КБ," \
-		     "алгоритм $(sed 's/.*\[\(.*\)\].*/\1/' $Z/comp_algorithm)"
+		echo "zram: data $(($1 / 1024)) KiB -> compressed $(($2 / 1024)) KiB, memory $(($3 / 1024)) KiB," \
+		     "algorithm $(sed 's/.*\[\(.*\)\].*/\1/' $Z/comp_algorithm)"
 	fi
 	;;
 *)

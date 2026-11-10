@@ -1,8 +1,9 @@
 #!/bin/busybox sh
-# initramfs PS2 Linux: поднять IOP и USB, найти rootfs на флешке, switch_root.
+# PS2 Linux initramfs: bring up the IOP and USB, find the root filesystem on
+# the USB stick, switch_root.
 #
-# Раздел с корнем ищется по метке ps2root (findfs), иначе /dev/sda2.
-# Режим видео: первая строка VIDEO.TXT на FAT-разделе флешки, иначе @VIDEO@.
+# The root partition is found by label ps2root (findfs), otherwise /dev/sda2.
+# Video mode: first line of VIDEO.TXT on the FAT partition, otherwise @VIDEO@.
 
 /bin/busybox --install -s
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
@@ -16,18 +17,18 @@ echo 0 > /proc/sys/kernel/printk_ratelimit 2>/dev/null
 rescue() {
 	echo "initramfs: $*" >&2
 	modprobe ps2fb mode_option="${VIDEO:-@VIDEO@}" 2>/dev/null
-	echo "Аварийная оболочка initramfs. 'exit' — повторить загрузку." >&2
+	echo "initramfs rescue shell. Type 'exit' to retry booting." >&2
 	setsid cttyhack sh
 	exec /init
 }
 
-# IOP и USB — по списку /etc/initramfs-modules (ps2fb — ниже, с режимом видео)
+# IOP and USB, from /etc/initramfs-modules (ps2fb is loaded below, with the video mode)
 grep -v '^#' /etc/initramfs-modules | while read -r m; do
 	[ -z "$m" ] || [ "$m" = ps2fb ] && continue
-	modprobe "$m" || echo "initramfs: не загрузился модуль $m" >&2
+	modprobe "$m" || echo "initramfs: failed to load module $m" >&2
 done
 
-# ждём флешку до 20 секунд
+# wait up to 20 seconds for the USB stick
 ROOT=
 i=0
 while [ $i -lt 40 ]; do
@@ -38,7 +39,7 @@ while [ $i -lt 40 ]; do
 	i=$((i + 1))
 done
 
-# режим видео с FAT-раздела (удобно править на ПК)
+# video mode from the FAT partition (easy to edit on a PC)
 VIDEO=@VIDEO@
 BOOT=$(findfs LABEL=PS2BOOT 2>/dev/null) || BOOT=/dev/sda1
 mkdir -p /boot
@@ -51,16 +52,16 @@ if [ -b "$BOOT" ] && mount -t vfat -o ro "$BOOT" /boot 2>/dev/null; then
 fi
 modprobe ps2fb mode_option="$VIDEO"
 
-[ -n "$ROOT" ] || rescue "раздел с корнем не найден (метка ps2root или /dev/sda2)"
+[ -n "$ROOT" ] || rescue "root partition not found (label ps2root or /dev/sda2)"
 
-# без журнала: после неаккуратного выключения чиним автоматически
+# no journal: repair automatically after an unclean shutdown
 if [ -x /sbin/e2fsck ]; then
 	e2fsck -p "$ROOT"
-	[ $? -ge 4 ] && rescue "e2fsck не смог починить $ROOT — запустите 'e2fsck -f $ROOT'"
+	[ $? -ge 4 ] && rescue "e2fsck could not repair $ROOT - run 'e2fsck -f $ROOT'"
 fi
 
-mount -t ext4 -o rw,noatime "$ROOT" /newroot || rescue "не монтируется $ROOT"
-[ -x /newroot/sbin/init ] || rescue "на $ROOT нет /sbin/init"
+mount -t ext4 -o rw,noatime "$ROOT" /newroot || rescue "cannot mount $ROOT"
+[ -x /newroot/sbin/init ] || rescue "no /sbin/init on $ROOT"
 
 mount --move /dev /newroot/dev
 umount /sys /proc

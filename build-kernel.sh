@@ -4,7 +4,7 @@
 #
 #   ./build-kernel.sh                       # → out/VMLINUZ.ELF, out/modules/
 #   PROFILE=stock ./build-kernel.sh         # ps2_defconfig без изменений
-#   VIDEO=1920x1080i@60 ./build-kernel.sh   # режим по умолчанию (меняется и на флешке)
+#   VIDEO=1280x720p@60 ./build-kernel.sh    # режим по умолчанию (меняется и на флешке)
 #
 # PROFILE=fast (по умолчанию) — ps2_defconfig плюс:
 #   zram + LZ4 модулями (rcS включает zram-swap), без отладочных опций
@@ -19,8 +19,9 @@ TOP=$(cd "$(dirname "$0")" && pwd)
 WORK=${WORK:-$TOP/work}
 OUT=${OUT:-$TOP/out}
 JOBS=${JOBS:-$(nproc)}
-# Компонентный кабель: HD-режимы GS выводит в YPbPr. 720p — читаемая консоль.
-VIDEO=${VIDEO:-1280x720p@60}
+# SD-режимы GS выводит в RGB (SCART, композит), HD-режимы — в YPbPr (компонент).
+# 640x512i@50 — PAL с полями, весь текст виден на любом телевизоре.
+VIDEO=${VIDEO:-640x512i@50}
 PROFILE=${PROFILE:-fast}
 case "$PROFILE" in fast|stock) ;; *) echo "PROFILE: fast или stock" >&2; exit 1;; esac
 BUSYBOX_REF=${BUSYBOX_REF:-1_36_1}
